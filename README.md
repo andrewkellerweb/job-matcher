@@ -1,4 +1,4 @@
-# Job Matcher
+# Job Matcher (ALPHA)
 
 A local-first job search tool that pulls listings from multiple sources, scores them against your resume using keyword analysis and AI, and helps you identify and apply to the best-fit roles.
 
