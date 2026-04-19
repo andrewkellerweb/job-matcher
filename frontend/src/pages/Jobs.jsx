@@ -194,7 +194,9 @@ export default function Jobs() {
     posting_date: 'all',
     country: '',
   });
-  const [sortBy, setSortBy] = useState('date');
+  const [sortBy, setSortBy] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('jm-sortBy')) ?? 'date'; } catch { return 'date'; }
+  });
   const [sourceStatuses, setSourceStatuses] = useState({}); // { label: { status, count, message } }
   const [showSourceBar, setShowSourceBar] = useState(false);
   const [processingIds, setProcessingIds] = useState(new Set());
@@ -208,25 +210,43 @@ export default function Jobs() {
 
   useEffect(() => {
     loadJobs();
-    fetch(`${BASE}/api/profile`).then(r => r.json()).then(p => {
-      // Convert stored string remote_preference to array
-      const stored = p.remote_preference;
-      let remoteArr = [];
-      if (stored && stored !== 'any') {
-        const mapped = stored === 'onsite' ? 'on-site' : stored;
-        remoteArr = [mapped];
-      }
-      setSearchOptions({
-        role_title: p.keywords || '',
-        location: p.location || '',
-        remote_preference: remoteArr,
-        salary_min: p.salary_min ? String(p.salary_min) : '',
-        include_no_salary: p.include_no_salary !== 0,
-        posting_date: 'all',
-    country: '',
+
+    // Try localStorage first; fall back to profile defaults
+    const saved = (() => {
+      try { return JSON.parse(localStorage.getItem('jm-filters')); } catch { return null; }
+    })();
+
+    if (saved) {
+      setSearchOptions(saved);
+    } else {
+      fetch(`${BASE}/api/profile`).then(r => r.json()).then(p => {
+        const stored = p.remote_preference;
+        let remoteArr = [];
+        if (stored && stored !== 'any') {
+          const mapped = stored === 'onsite' ? 'on-site' : stored;
+          remoteArr = [mapped];
+        }
+        setSearchOptions({
+          role_title: p.keywords || '',
+          location: p.location || '',
+          remote_preference: remoteArr,
+          salary_min: p.salary_min ? String(p.salary_min) : '',
+          include_no_salary: p.include_no_salary !== 0,
+          posting_date: 'all',
+          country: '',
+        });
       });
-    });
+    }
   }, []);
+
+  // Persist filters and sort to localStorage on every change
+  useEffect(() => {
+    try { localStorage.setItem('jm-filters', JSON.stringify(searchOptions)); } catch {}
+  }, [searchOptions]);
+
+  useEffect(() => {
+    try { localStorage.setItem('jm-sortBy', JSON.stringify(sortBy)); } catch {}
+  }, [sortBy]);
 
   useEffect(() => {
     if (!showSearchOptions) return;
