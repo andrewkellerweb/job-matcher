@@ -40,7 +40,7 @@ export async function fetchJSearch(query, location, remotePreference, apiKey) {
     employment_type: j.job_employment_type,
     remote_type: j.job_is_remote ? 'remote' : 'on-site',
     posted_at: j.job_posted_at_datetime_utc || null,
-    raw_text: [j.job_title, j.employer_name, j.job_description].filter(Boolean).join('\n\n'),
+    raw_text: [j.job_title, j.employer_name, stripHtml(j.job_description)].filter(Boolean).join('\n\n'),
   }));
 }
 
@@ -71,7 +71,7 @@ export async function fetchAdzuna(query, location, appId, apiKey) {
     employment_type: j.contract_time,
     remote_type: null,
     posted_at: j.created ? new Date(j.created).toISOString() : null,
-    raw_text: [j.title, j.company?.display_name, j.description].filter(Boolean).join('\n\n'),
+    raw_text: [j.title, j.company?.display_name, stripHtml(j.description)].filter(Boolean).join('\n\n'),
   }));
 }
 
@@ -106,14 +106,94 @@ export async function enrichJSearchDescriptions(jobs, apiKey, maxFetches = 15) {
     if (!detailMap.has(job.id)) return job;
     return {
       ...job,
-      raw_text: [job.title, job.company, detailMap.get(job.id)].filter(Boolean).join('\n\n'),
+      raw_text: [job.title, job.company, stripHtml(detailMap.get(job.id))].filter(Boolean).join('\n\n'),
     };
   });
 }
 
-// ── Strip HTML tags from description text ─────────────────────────────────────
+// ── HTML entity decoder ───────────────────────────────────────────────────────
+const HTML_ENTITIES = {
+  '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'",
+  '&nbsp;': ' ', '&ndash;': '–', '&mdash;': '—', '&lsquo;': '\u2018',
+  '&rsquo;': '\u2019', '&ldquo;': '\u201c', '&rdquo;': '\u201d',
+  '&bull;': '•', '&middot;': '·', '&hellip;': '…', '&trade;': '™',
+  '&reg;': '®', '&copy;': '©', '&frac12;': '½', '&frac14;': '¼',
+  '&frac34;': '¾', '&times;': '×', '&divide;': '÷',
+};
+
+function decodeEntities(str) {
+  // Named entities
+  str = str.replace(/&[a-zA-Z]+;/g, m => HTML_ENTITIES[m] || m);
+  // Decimal numeric entities &#8217;
+  str = str.replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)));
+  // Hex numeric entities &#x2019;
+  str = str.replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)));
+  return str;
+}
+
+// Fix common UTF-8-misread-as-latin-1 artifacts (Mojibake)
+function fixMojibake(str) {
+  return str
+    .replace(/â€™/g, '\u2019')  // right single quote '
+    .replace(/â€˜/g, '\u2018')  // left single quote '
+    .replace(/â€œ/g, '\u201c')  // left double quote "
+    .replace(/â€/g,  '\u201d')  // right double quote "
+    .replace(/â€"/g, '\u2013')  // en dash –
+    .replace(/â€"/g, '\u2014')  // em dash —
+    .replace(/â€¦/g, '\u2026')  // ellipsis …
+    .replace(/Ã©/g,  '\u00e9')  // é
+    .replace(/Ã¨/g,  '\u00e8')  // è
+    .replace(/Ã /g,  '\u00e0')  // à
+    .replace(/Ã¢/g,  '\u00e2')  // â
+    .replace(/Ã®/g,  '\u00ee')  // î
+    .replace(/Ã´/g,  '\u00f4')  // ô
+    .replace(/Ã»/g,  '\u00fb')  // û
+    .replace(/Ã§/g,  '\u00e7')  // ç
+    .replace(/Ã¼/g,  '\u00fc')  // ü
+    .replace(/Ã¶/g,  '\u00f6')  // ö
+    .replace(/Ã¤/g,  '\u00e4'); // ä
+}
+
+// ── Strip HTML tags, preserving paragraph/list structure as newlines ──────────
 function stripHtml(html) {
-  return (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!html) return '';
+
+  let text = html;
+
+  // Convert block-level elements to newlines BEFORE stripping tags
+  // Double newline for paragraph-like breaks
+  text = text.replace(/<\/?(p|div|section|article|header|footer|main|aside|blockquote)\b[^>]*>/gi, '\n\n');
+  // Single newline for line breaks and headings
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/?(h[1-6])\b[^>]*>/gi, '\n\n');
+  // List items get a bullet + newline
+  text = text.replace(/<li\b[^>]*>/gi, '\n• ');
+  text = text.replace(/<\/li>/gi, '');
+  // List containers get a newline
+  text = text.replace(/<\/?(ul|ol)\b[^>]*>/gi, '\n');
+  // Table cells/rows
+  text = text.replace(/<\/?(tr|td|th)\b[^>]*>/gi, '\n');
+
+  // Strip all remaining tags
+  text = text.replace(/<[^>]+>/g, '');
+
+  // Decode HTML entities
+  text = decodeEntities(text);
+
+  // Fix encoding artifacts
+  text = fixMojibake(text);
+
+  // Normalize whitespace while preserving intentional line breaks:
+  // 1. Collapse spaces/tabs within a line
+  text = text.replace(/[ \t]+/g, ' ');
+  // 2. Trim each line
+  text = text.split('\n').map(l => l.trim()).join('\n');
+  // 3. Collapse 3+ consecutive newlines to 2
+  text = text.replace(/\n{3,}/g, '\n\n');
+  // 4. Trim leading/trailing whitespace
+  text = text.trim();
+
+  return text;
 }
 
 // ── Derive a useful RemoteOK tag from the user's query ───────────────────────
