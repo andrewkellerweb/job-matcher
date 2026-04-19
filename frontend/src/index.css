@@ -881,6 +881,8 @@ input, select, textarea { font-family: inherit; }
   display: flex;
   flex-direction: column;
   gap: 5px;
+  max-height: 180px;
+  overflow-y: auto;
 }
 .source-status-row {
   display: flex;
