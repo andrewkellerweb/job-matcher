@@ -15,6 +15,8 @@ export default function Profile() {
       jsearch_api_key: p.jsearch_api_key || '',
       adzuna_app_id: p.adzuna_app_id || '',
       adzuna_api_key: p.adzuna_api_key || '',
+      greenhouse_companies: p.greenhouse_companies || '',
+      lever_companies: p.lever_companies || '',
     }));
     fetch(`${BASE}/api/claude/status`).then(r => r.json()).then(d => setClaudeAvailable(d.available));
   }, []);
@@ -114,6 +116,35 @@ export default function Profile() {
                 placeholder="API key"
                 value={form.adzuna_api_key}
                 onChange={e => set('adzuna_api_key', e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Company Job Boards */}
+        <div className="card">
+          <div style={{ fontWeight: 500, marginBottom: 4 }}>Company Job Boards</div>
+          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 16 }}>
+            Pull directly from specific companies' career pages. Enter slugs as comma-separated values.{' '}
+            Find a company's slug in their Greenhouse/Lever URL (e.g. <code>boards.greenhouse.io/stripe</code> → slug is <code>stripe</code>).
+          </div>
+          <div className="profile-grid">
+            <div className="form-group">
+              <label className="label">Greenhouse Companies</label>
+              <input
+                className="input"
+                placeholder="e.g. stripe, airbnb, notion"
+                value={form.greenhouse_companies}
+                onChange={e => set('greenhouse_companies', e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="label">Lever Companies</label>
+              <input
+                className="input"
+                placeholder="e.g. netflix, reddit, vercel"
+                value={form.lever_companies}
+                onChange={e => set('lever_companies', e.target.value)}
               />
             </div>
           </div>

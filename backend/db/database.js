@@ -63,6 +63,8 @@ try { db.exec(`ALTER TABLE profile ADD COLUMN include_no_salary INTEGER DEFAULT 
 try { db.exec(`ALTER TABLE profile ADD COLUMN min_experience INTEGER DEFAULT 0`); } catch {}
 try { db.exec(`ALTER TABLE jobs ADD COLUMN posted_at TEXT`); } catch {}
 try { db.exec(`ALTER TABLE resume ADD COLUMN additional_context TEXT`); } catch {}
+try { db.exec(`ALTER TABLE profile ADD COLUMN greenhouse_companies TEXT`); } catch {}
+try { db.exec(`ALTER TABLE profile ADD COLUMN lever_companies TEXT`); } catch {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS activity_log (

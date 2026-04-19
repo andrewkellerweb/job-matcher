@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import db from '../db/database.js';
 import { log } from '../services/logger.js';
-import { fetchJSearch, fetchAdzuna, fetchGreenhouse, fetchLever, enrichJSearchDescriptions } from '../services/jobFetcher.js';
+import { fetchJSearch, fetchAdzuna, fetchRemoteOK, fetchRemotive, fetchGreenhouse, fetchLever, enrichJSearchDescriptions } from '../services/jobFetcher.js';
 import { scoreKeywords, extractJobSkills } from '../services/keywordScorer.js';
 import { scoreWithClaude, isClaudeAvailable } from '../services/claudeScorer.js';
 import { deduplicateBatch, isDuplicate } from '../services/deduplicator.js';
@@ -22,6 +22,18 @@ function enrichFetchError(source, err) {
     if (status === '400') return { source, message: 'Adzuna rejected the request.', hint: 'Try adding a Location in Profile → Search Preferences, or check your Adzuna credentials.' };
     if (status === '401' || status === '403') return { source, message: 'Invalid Adzuna credentials.', hint: 'Go to Profile → API Keys and verify your Adzuna App ID and API Key.' };
     return { source, message: `Adzuna returned HTTP ${status}.`, hint: 'Check your Adzuna credentials in Profile → API Keys.' };
+  }
+  if (source === 'RemoteOK') {
+    if (!status) return { source, message: 'Could not connect to RemoteOK.', hint: 'Check your internet connection.' };
+    return { source, message: `RemoteOK returned HTTP ${status}.`, hint: '' };
+  }
+  if (source === 'Remotive') {
+    if (!status) return { source, message: 'Could not connect to Remotive.', hint: 'Check your internet connection.' };
+    return { source, message: `Remotive returned HTTP ${status}.`, hint: '' };
+  }
+  if (source === 'Greenhouse' || source === 'Lever') {
+    if (!status) return { source, message: `Could not connect to ${source}.`, hint: 'Check the company slug — it may be incorrect or the company may not use this ATS.' };
+    return { source, message: `${source} returned HTTP ${status}.`, hint: 'Verify the company slug is correct.' };
   }
   return { source, message: msg, hint: '' };
 }
@@ -68,20 +80,42 @@ router.get('/search', async (req, res) => {
 
   try {
     log('job_search_start', { keywords: profile.keywords, location: profile.location, remote_preference: profile.remote_preference });
-  send('status', { message: 'Fetching jobs...' });
+    send('status', { message: 'Fetching jobs...' });
 
-    const [jsearchJobs, adzunaJobs] = await Promise.allSettled([
-      fetchJSearch(profile.keywords, profile.location, profile.remote_preference, profile.jsearch_api_key),
-      fetchAdzuna(profile.keywords, profile.location, profile.adzuna_app_id, profile.adzuna_api_key),
+    const query = profile.keywords || '';
+
+    // Build Greenhouse + Lever per-company fetches
+    const ghSlugs = (profile.greenhouse_companies || '').split(',').map(s => s.trim()).filter(Boolean);
+    const lvSlugs = (profile.lever_companies || '').split(',').map(s => s.trim()).filter(Boolean);
+
+    const [jsearchJobs, adzunaJobs, remoteOKJobs, remotiveJobs, ...boardResults] = await Promise.allSettled([
+      fetchJSearch(query, profile.location, profile.remote_preference, profile.jsearch_api_key),
+      fetchAdzuna(query, profile.location, profile.adzuna_app_id, profile.adzuna_api_key),
+      fetchRemoteOK(query),
+      fetchRemotive(query),
+      ...ghSlugs.map(slug => fetchGreenhouse(slug).then(jobs => ({ slug, source: 'Greenhouse', jobs }))),
+      ...lvSlugs.map(slug => fetchLever(slug).then(jobs => ({ slug, source: 'Lever', jobs }))),
     ]);
 
     const fetchErrors = [];
     if (jsearchJobs.status === 'rejected') fetchErrors.push(enrichFetchError('JSearch', jsearchJobs.reason));
     if (adzunaJobs.status === 'rejected') fetchErrors.push(enrichFetchError('Adzuna', adzunaJobs.reason));
+    if (remoteOKJobs.status === 'rejected') fetchErrors.push(enrichFetchError('RemoteOK', remoteOKJobs.reason));
+    if (remotiveJobs.status === 'rejected') fetchErrors.push(enrichFetchError('Remotive', remotiveJobs.reason));
+    boardResults.forEach(r => {
+      if (r.status === 'rejected') fetchErrors.push(enrichFetchError(r.reason?.source || 'Board', r.reason));
+    });
+
+    const boardJobs = boardResults
+      .filter(r => r.status === 'fulfilled')
+      .flatMap(r => r.value.jobs || []);
 
     let allJobs = [
       ...(jsearchJobs.status === 'fulfilled' ? jsearchJobs.value : []),
       ...(adzunaJobs.status === 'fulfilled' ? adzunaJobs.value : []),
+      ...(remoteOKJobs.status === 'fulfilled' ? remoteOKJobs.value : []),
+      ...(remotiveJobs.status === 'fulfilled' ? remotiveJobs.value : []),
+      ...boardJobs,
     ];
 
     allJobs = deduplicateBatch(allJobs).filter(j => !isDuplicate(j));
@@ -142,9 +176,12 @@ router.get('/search', async (req, res) => {
 
     log('job_search_complete', {
       added: allJobs.length,
-      sources: ['JSearch', 'Adzuna'],
       jsearch_ok: jsearchJobs.status === 'fulfilled',
       adzuna_ok: adzunaJobs.status === 'fulfilled',
+      remoteok_ok: remoteOKJobs.status === 'fulfilled',
+      remotive_ok: remotiveJobs.status === 'fulfilled',
+      greenhouse_slugs: ghSlugs,
+      lever_slugs: lvSlugs,
       fetch_errors: fetchErrors.map(e => `${e.source}: ${e.message}`),
     });
     send('done', { added: allJobs.length, fetchErrors });

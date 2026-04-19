@@ -111,6 +111,76 @@ export async function enrichJSearchDescriptions(jobs, apiKey, maxFetches = 15) {
   });
 }
 
+// ── Strip HTML tags from description text ─────────────────────────────────────
+function stripHtml(html) {
+  return (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// ── Derive a useful RemoteOK tag from the user's query ───────────────────────
+function extractTag(query) {
+  const words = query.toLowerCase().split(/[\s,]+/).filter(w => w.length > 3);
+  const priority = ['engineer', 'developer', 'manager', 'designer', 'analyst',
+                    'director', 'product', 'marketing', 'sales', 'devops', 'data'];
+  for (const role of priority) {
+    if (words.includes(role)) return role;
+  }
+  return words[0] || 'manager';
+}
+
+export async function fetchRemoteOK(query) {
+  const tag = extractTag(query);
+  const data = await fetchJSON(`https://remoteok.com/api?tag=${encodeURIComponent(tag)}`, {
+    headers: { 'User-Agent': 'job-matcher-app/1.0' },
+  });
+
+  const jobs = Array.isArray(data) ? data.filter(j => j.id && j.position) : [];
+
+  // Filter to titles that loosely match any term from the query
+  const queryWords = query.toLowerCase().split(/[\s,]+/).filter(w => w.length > 2);
+  const matches = jobs.filter(j => {
+    const title = (j.position || '').toLowerCase();
+    return queryWords.some(w => title.includes(w));
+  });
+
+  return matches.map(j => ({
+    id: buildJobId('remoteok', String(j.id)),
+    source: 'RemoteOK',
+    url: j.url || `https://remoteok.com/remote-jobs/${j.slug}`,
+    title: j.position,
+    company: j.company,
+    location: j.location || 'Remote',
+    salary: formatSalary(j.salary_min, j.salary_max, 'USD'),
+    employment_type: null,
+    remote_type: 'remote',
+    posted_at: j.date ? new Date(j.date).toISOString() : null,
+    raw_text: [j.position, j.company, stripHtml(j.description)].filter(Boolean).join('\n\n'),
+  }));
+}
+
+export async function fetchRemotive(query) {
+  // Remotive's search param doesn't work on the free tier; fetch all and filter
+  const data = await fetchJSON('https://remotive.com/api/remote-jobs');
+  const queryWords = query.toLowerCase().split(/[\s,]+/).filter(w => w.length > 2);
+  const filtered = (data.jobs || []).filter(j => {
+    const title = (j.title || '').toLowerCase();
+    return queryWords.some(w => title.includes(w));
+  });
+
+  return filtered.map(j => ({
+    id: buildJobId('remotive', String(j.id)),
+    source: 'Remotive',
+    url: j.url,
+    title: j.title,
+    company: j.company_name,
+    location: j.candidate_required_location || 'Remote',
+    salary: j.salary || null,
+    employment_type: j.job_type || null,
+    remote_type: 'remote',
+    posted_at: j.publication_date ? new Date(j.publication_date).toISOString() : null,
+    raw_text: [j.title, j.company_name, stripHtml(j.description)].filter(Boolean).join('\n\n'),
+  }));
+}
+
 export async function fetchGreenhouse(company) {
   const data = await fetchJSON(
     `https://boards-api.greenhouse.io/v1/boards/${company}/jobs?content=true`
@@ -126,7 +196,8 @@ export async function fetchGreenhouse(company) {
     salary: null,
     employment_type: null,
     remote_type: j.location?.name?.toLowerCase().includes('remote') ? 'remote' : null,
-    raw_text: [j.title, j.location?.name, j.content].filter(Boolean).join('\n\n'),
+    posted_at: j.updated_at ? new Date(j.updated_at).toISOString() : null,
+    raw_text: [j.title, j.location?.name, stripHtml(j.content)].filter(Boolean).join('\n\n'),
   }));
 }
 
@@ -143,6 +214,7 @@ export async function fetchLever(company) {
     salary: null,
     employment_type: j.categories?.commitment,
     remote_type: j.categories?.location?.toLowerCase().includes('remote') ? 'remote' : null,
+    posted_at: j.createdAt ? new Date(j.createdAt).toISOString() : null,
     raw_text: [j.text, j.categories?.location, j.descriptionPlain, j.additionalPlain]
       .filter(Boolean)
       .join('\n\n'),
