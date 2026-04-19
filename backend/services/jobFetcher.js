@@ -307,3 +307,68 @@ function formatSalary(min, max, currency) {
   if (min && max) return `${fmt(min)} – ${fmt(max)}`;
   return fmt(min) || fmt(max);
 }
+
+// ── Extract salary from raw description text ──────────────────────────────────
+// Handles patterns like:
+//   $80,000 – $105,000 a year
+//   $45 - $55 per hour
+//   USD 120,000 – 160,000
+//   80K-100K annually
+//   $95k/yr
+export function extractSalaryFromText(text) {
+  if (!text) return null;
+
+  // Normalize: collapse whitespace, en/em dashes → hyphen, "X to Y" → "X - Y"
+  const t = text.replace(/[–—]/g, '-').replace(/\s+/g, ' ')
+                .replace(/(\$[\d,Kk]+)\s+to\s+(\$?[\d,Kk]+)/gi, '$1 - $2');
+
+  function parseAmount(raw) {
+    const s = raw.replace(/[$,\s]/g, '').toLowerCase();
+    const k = s.endsWith('k');
+    const n = parseFloat(k ? s.slice(0, -1) : s);
+    if (isNaN(n)) return null;
+    return k ? n * 1000 : n;
+  }
+
+  // Matches: $80,000 - $105,000 a year | $45/hr | 80K-100K annually | USD 120,000
+  const pattern = /(?:\$|USD\s*)(\d[\d,]*(?:\.\d+)?[Kk]?)\s*(?:-\s*(?:\$|USD\s*)?(\d[\d,]*(?:\.\d+)?[Kk]?))?(?:\s*(?:\/|\bper\b|\ba\b)?\s*\b(year|yr|annually|annual|month|mo|week|wk|hour|hr)\b)?/gi;
+
+  let best = null;
+
+  for (const match of t.matchAll(pattern)) {
+    const [, rawMin, rawMax, period] = match;
+    const min = parseAmount(rawMin);
+    const max = rawMax ? parseAmount(rawMax) : null;
+    if (!min) continue;
+
+    // Annualize hourly/weekly/monthly figures
+    let annMin = min, annMax = max;
+    const p = (period || '').toLowerCase();
+    if (p.startsWith('hour') || p === 'hr') {
+      annMin = min * 2080; annMax = max ? max * 2080 : null;
+    } else if (p.startsWith('week') || p === 'wk') {
+      annMin = min * 52;   annMax = max ? max * 52   : null;
+    } else if (p.startsWith('month') || p === 'mo') {
+      annMin = min * 12;   annMax = max ? max * 12   : null;
+    }
+
+    // Sanity: reasonable salary $10k – $2M
+    if (annMin < 10_000 || annMin > 2_000_000) continue;
+    if (annMax && (annMax < annMin || annMax > 2_000_000)) continue;
+
+    // Prefer ranges; among equals prefer higher value
+    const score = (annMax ? 2 : 1) * annMin;
+    if (!best || score > best.score) {
+      best = { min, max, annMin, annMax, period: p, score };
+    }
+  }
+
+  if (!best) return null;
+
+  const isHourly = best.period.startsWith('hour') || best.period === 'hr';
+  const suffix = isHourly ? '/hr' : '/yr';
+  const fmt = n => `$${Math.round(n).toLocaleString()}`;
+
+  if (best.max) return `${fmt(best.min)} – ${fmt(best.max)}${suffix}`;
+  return `${fmt(best.min)}${suffix}`;
+}

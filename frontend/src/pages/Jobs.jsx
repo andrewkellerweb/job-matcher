@@ -291,6 +291,17 @@ export default function Jobs() {
     };
   }
 
+  useEffect(() => {
+    function onReimport() {
+      setJobs([]);
+      setSelected(new Set());
+      setLastSearchInfo(null);
+      startSearch();
+    }
+    window.addEventListener('debug-reimport', onReimport);
+    return () => window.removeEventListener('debug-reimport', onReimport);
+  }, []);
+
   async function processMatches() {
     const ids = [...selected];
     setProcessingIds(new Set(ids));

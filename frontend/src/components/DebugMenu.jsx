@@ -36,6 +36,15 @@ const ACTIONS = [
     confirm: 'Delete all job listings?',
     reload: false,
   },
+  {
+    id: 'clear-reimport',
+    label: 'Clear & Re-import',
+    hint: 'Clears all jobs then runs a fresh import',
+    endpoint: '/api/debug/clear-jobs',
+    confirm: 'Clear all saved jobs and re-import fresh?',
+    reload: false,
+    onSuccess: () => window.dispatchEvent(new CustomEvent('debug-reimport')),
+  },
 ];
 
 export default function DebugMenu() {

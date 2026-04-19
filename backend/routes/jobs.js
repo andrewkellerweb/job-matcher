@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import db from '../db/database.js';
 import { log } from '../services/logger.js';
-import { fetchJSearch, fetchAdzuna, fetchRemoteOK, fetchRemotive, fetchGreenhouse, fetchLever, enrichJSearchDescriptions } from '../services/jobFetcher.js';
+import { fetchJSearch, fetchAdzuna, fetchRemoteOK, fetchRemotive, fetchGreenhouse, fetchLever, enrichJSearchDescriptions, extractSalaryFromText } from '../services/jobFetcher.js';
 import { scoreKeywords, extractJobSkills } from '../services/keywordScorer.js';
 import { scoreWithClaude, isClaudeAvailable } from '../services/claudeScorer.js';
 import { deduplicateBatch, isDuplicate } from '../services/deduplicator.js';
@@ -154,6 +154,11 @@ router.get('/search', async (req, res) => {
     let scored = 0;
 
     for (const job of allJobs) {
+      // Backfill salary from description text if the source didn't provide one
+      if (!job.salary) {
+        job.salary = extractSalaryFromText(job.raw_text || '') || null;
+      }
+
       const skills = extractJobSkills(job.raw_text || '');
       let keywordScore = null;
       let llmScore = null;
@@ -233,6 +238,11 @@ router.post('/:id/analyze', async (req, res) => {
     .run(insights.score, JSON.stringify(insights), job.id);
 
   res.json(insights);
+});
+
+router.delete('/all', (req, res) => {
+  db.prepare('DELETE FROM jobs').run();
+  res.json({ ok: true });
 });
 
 router.delete('/:id', (req, res) => {
