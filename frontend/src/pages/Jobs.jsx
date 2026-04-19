@@ -364,6 +364,7 @@ export default function Jobs() {
 
   async function processMatches() {
     setProcessError('');
+    setLastSearchInfo(null); // clear stale import errors from previous run
 
     // Pre-flight: verify Claude is connected and resume is imported
     try {
