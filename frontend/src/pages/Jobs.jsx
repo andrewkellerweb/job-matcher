@@ -24,6 +24,51 @@ const SALARY_OPTIONS = [
   }),
 ];
 
+// US state abbreviations used to detect US jobs (many only show "City, ST")
+const US_STATES = new Set([
+  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
+  'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+  'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT',
+  'VA','WA','WV','WI','WY','DC',
+]);
+
+// Aliases used for country matching (lowercase)
+const COUNTRY_ALIASES = {
+  'United Kingdom': ['united kingdom', 'england', 'scotland', 'wales', ', uk', 'britain'],
+  'United Arab Emirates': ['united arab emirates', ', uae', 'dubai', 'abu dhabi'],
+  'South Korea': ['south korea', 'korea', 'seoul'],
+  'New Zealand': ['new zealand', ', nz'],
+  'South Africa': ['south africa'],
+};
+
+const COUNTRIES = [
+  'United States',
+  'Argentina', 'Australia', 'Austria', 'Belgium', 'Brazil', 'Canada', 'Chile',
+  'China', 'Colombia', 'Czech Republic', 'Denmark', 'Finland', 'France',
+  'Germany', 'Greece', 'Hungary', 'India', 'Indonesia', 'Ireland', 'Israel',
+  'Italy', 'Japan', 'Kenya', 'Malaysia', 'Mexico', 'Netherlands', 'New Zealand',
+  'Nigeria', 'Norway', 'Philippines', 'Poland', 'Portugal', 'Romania',
+  'Singapore', 'South Africa', 'South Korea', 'Spain', 'Sweden', 'Switzerland',
+  'Taiwan', 'Thailand', 'Turkey', 'Ukraine', 'United Arab Emirates',
+  'United Kingdom', 'Vietnam',
+];
+
+function matchesCountry(location, country) {
+  if (!country) return true;
+  const loc = location || '';
+  const locLower = loc.toLowerCase();
+  if (country === 'United States') {
+    if (/united states|usa/i.test(loc)) return true;
+    if (/,\s*us\b/i.test(loc)) return true;
+    // Match "City, ST" pattern where ST is a known US state abbreviation
+    const m = loc.match(/,\s*([A-Z]{2})(?:\s*,|\s*$)/);
+    if (m && US_STATES.has(m[1])) return true;
+    return false;
+  }
+  const aliases = COUNTRY_ALIASES[country] || [country.toLowerCase()];
+  return aliases.some(a => locLower.includes(a));
+}
+
 
 function parseSalaryMin(salaryStr) {
   if (!salaryStr) return null;
@@ -67,6 +112,7 @@ function filterJobs(jobList, opts) {
       cutoff.setDate(cutoff.getDate() - days);
       if (!job.posted_at || new Date(job.posted_at) < cutoff) return false;
     }
+    if (opts.country && !matchesCountry(job.location, opts.country)) return false;
     return true;
   });
 }
@@ -146,6 +192,7 @@ export default function Jobs() {
     salary_min: '',
     include_no_salary: true,
     posting_date: 'all',
+    country: '',
   });
   const [sortBy, setSortBy] = useState('date');
   const [sourceStatuses, setSourceStatuses] = useState({}); // { label: { status, count, message } }
@@ -175,6 +222,7 @@ export default function Jobs() {
         salary_min: p.salary_min ? String(p.salary_min) : '',
         include_no_salary: p.include_no_salary !== 0,
         posting_date: 'all',
+    country: '',
       });
     });
   }, []);
@@ -479,6 +527,13 @@ export default function Jobs() {
               <label className="label">Posting Date</label>
               <select className="select" value={searchOptions.posting_date} onChange={e => setOpt('posting_date', e.target.value)}>
                 {POSTING_DATE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="label">Country</label>
+              <select className="select" value={searchOptions.country} onChange={e => setOpt('country', e.target.value)}>
+                <option value="">All Countries</option>
+                {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div className="form-group">
