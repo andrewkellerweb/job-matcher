@@ -185,14 +185,20 @@ export default function Jobs() {
   const [searchError, setSearchError] = useState('');
   const [lastSearchInfo, setLastSearchInfo] = useState(null);
   const [showSearchOptions, setShowSearchOptions] = useState(false);
-  const [searchOptions, setSearchOptions] = useState({
-    role_title: '',
-    location: '',
-    remote_preference: [],   // array of 'remote'|'hybrid'|'on-site'; empty = any
-    salary_min: '',
-    include_no_salary: true,
-    posting_date: 'all',
-    country: '',
+  const [searchOptions, setSearchOptions] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('jm-filters'));
+      if (saved) return saved;
+    } catch {}
+    return {
+      role_title: '',
+      location: '',
+      remote_preference: [],
+      salary_min: '',
+      include_no_salary: true,
+      posting_date: 'all',
+      country: '',
+    };
   });
   const [sortBy, setSortBy] = useState(() => {
     try { return JSON.parse(localStorage.getItem('jm-sortBy')) ?? 'date'; } catch { return 'date'; }
@@ -211,14 +217,12 @@ export default function Jobs() {
   useEffect(() => {
     loadJobs();
 
-    // Try localStorage first; fall back to profile defaults
-    const saved = (() => {
-      try { return JSON.parse(localStorage.getItem('jm-filters')); } catch { return null; }
+    // Only load from profile if localStorage has nothing saved yet
+    const hasStored = (() => {
+      try { return localStorage.getItem('jm-filters') !== null; } catch { return false; }
     })();
 
-    if (saved) {
-      setSearchOptions(saved);
-    } else {
+    if (!hasStored) {
       fetch(`${BASE}/api/profile`).then(r => r.json()).then(p => {
         const stored = p.remote_preference;
         let remoteArr = [];
@@ -239,7 +243,7 @@ export default function Jobs() {
     }
   }, []);
 
-  // Persist filters and sort to localStorage on every change
+  // Persist filters to localStorage whenever they change
   useEffect(() => {
     try { localStorage.setItem('jm-filters', JSON.stringify(searchOptions)); } catch {}
   }, [searchOptions]);
