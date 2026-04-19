@@ -454,6 +454,9 @@ export default function Jobs() {
                 value={searchOptions.role_title}
                 onChange={e => setOpt('role_title', e.target.value)}
               />
+              <span style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>
+                Separate roles by a comma
+              </span>
             </div>
             <div className="form-group">
               <label className="label">Location</label>
