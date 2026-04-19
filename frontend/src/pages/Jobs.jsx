@@ -36,7 +36,10 @@ const MIN_EXP_OPTIONS = [
 
 function parseSalaryMin(salaryStr) {
   if (!salaryStr) return null;
-  const nums = salaryStr.replace(/[^0-9]/g, ' ').trim().split(/\s+/).map(Number).filter(n => n > 1000);
+  // Match comma-grouped numbers like "80,000" or plain "80000"
+  const nums = [...salaryStr.matchAll(/[\d,]+/g)]
+    .map(m => Number(m[0].replace(/,/g, '')))
+    .filter(n => n > 1000);
   return nums.length > 0 ? nums[0] : null;
 }
 

@@ -352,9 +352,9 @@ export function extractSalaryFromText(text) {
       annMin = min * 12;   annMax = max ? max * 12   : null;
     }
 
-    // Sanity: reasonable salary $10k – $2M
-    if (annMin < 10_000 || annMin > 2_000_000) continue;
-    if (annMax && (annMax < annMin || annMax > 2_000_000)) continue;
+    // Sanity: reasonable salary $10k – $300k
+    if (annMin < 10_000 || annMin > 300_000) continue;
+    if (annMax && (annMax < annMin || annMax > 300_000)) continue;
 
     // Prefer ranges; among equals prefer higher value
     const score = (annMax ? 2 : 1) * annMin;
