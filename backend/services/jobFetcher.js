@@ -160,6 +160,14 @@ function stripHtml(html) {
 
   let text = html;
 
+  // Decode entities FIRST — some sources (e.g. Greenhouse/Chime) return
+  // HTML where the tags themselves are entity-encoded (&lt;h4&gt; etc.).
+  // Decoding before stripping ensures those tags are caught.
+  text = decodeEntities(text);
+
+  // Fix encoding artifacts before tag stripping too
+  text = fixMojibake(text);
+
   // Convert block-level elements to newlines BEFORE stripping tags
   // Double newline for paragraph-like breaks
   text = text.replace(/<\/?(p|div|section|article|header|footer|main|aside|blockquote)\b[^>]*>/gi, '\n\n');
@@ -177,11 +185,9 @@ function stripHtml(html) {
   // Strip all remaining tags
   text = text.replace(/<[^>]+>/g, '');
 
-  // Decode HTML entities
+  // Decode a second time for any entities that were inside tag attributes
+  // or otherwise survived the first pass
   text = decodeEntities(text);
-
-  // Fix encoding artifacts
-  text = fixMojibake(text);
 
   // Normalize whitespace while preserving intentional line breaks:
   // 1. Collapse spaces/tabs within a line
