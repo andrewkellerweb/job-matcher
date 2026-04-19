@@ -362,7 +362,7 @@ export default function Jobs() {
             <button className="btn btn-primary btn-sm" onClick={startSearch} disabled={searching}>
               {searching
                 ? <><span className="spinner" style={{ width: 12, height: 12 }} />{statusMsg || 'Searching…'}</>
-                : 'Import Jobs'}
+                : 'Import Job Posts'}
             </button>
           </div>
         </div>
@@ -500,7 +500,7 @@ export default function Jobs() {
             <button className="btn btn-primary btn-sm" onClick={startSearch} disabled={searching}>
               {searching
                 ? <><span className="spinner" style={{ width: 12, height: 12 }} />{statusMsg || 'Searching…'}</>
-                : '⌕ Import Jobs'}
+                : '⌕ Import Job Posts'}
             </button>
           </div>
         </div>
