@@ -62,6 +62,30 @@ router.get('/', (req, res) => {
   res.json(jobs);
 });
 
+// Ensure no undefined values reach SQLite (converts undefined→null, arrays/objects→string)
+function sanitizeJob(job) {
+  const safe = v => {
+    if (v === undefined) return null;
+    if (v === null) return null;
+    if (Array.isArray(v)) return v.join(', ');
+    if (typeof v === 'object') return String(v);
+    return v;
+  };
+  return {
+    id:              safe(job.id),
+    source:          safe(job.source),
+    url:             safe(job.url),
+    title:           safe(job.title),
+    company:         safe(job.company),
+    location:        safe(job.location),
+    salary:          safe(job.salary),
+    employment_type: safe(job.employment_type),
+    remote_type:     safe(job.remote_type),
+    raw_text:        safe(job.raw_text),
+    posted_at:       safe(job.posted_at),
+  };
+}
+
 router.get('/search', async (req, res) => {
   const profile = db.prepare('SELECT * FROM profile WHERE id = 1').get();
   const resume = db.prepare('SELECT structured_json, additional_context FROM resume WHERE id = 1').get();
@@ -80,43 +104,41 @@ router.get('/search', async (req, res) => {
 
   try {
     log('job_search_start', { keywords: profile.keywords, location: profile.location, remote_preference: profile.remote_preference });
-    send('status', { message: 'Fetching jobs...' });
 
     const query = profile.keywords || '';
-
-    // Build Greenhouse + Lever per-company fetches
     const ghSlugs = (profile.greenhouse_companies || '').split(',').map(s => s.trim()).filter(Boolean);
     const lvSlugs = (profile.lever_companies || '').split(',').map(s => s.trim()).filter(Boolean);
 
-    const [jsearchJobs, adzunaJobs, remoteOKJobs, remotiveJobs, ...boardResults] = await Promise.allSettled([
-      fetchJSearch(query, profile.location, profile.remote_preference, profile.jsearch_api_key),
-      fetchAdzuna(query, profile.location, profile.adzuna_app_id, profile.adzuna_api_key),
-      fetchRemoteOK(query),
-      fetchRemotive(query),
-      ...ghSlugs.map(slug => fetchGreenhouse(slug).then(jobs => ({ slug, source: 'Greenhouse', jobs }))),
-      ...lvSlugs.map(slug => fetchLever(slug).then(jobs => ({ slug, source: 'Lever', jobs }))),
-    ]);
-
+    // Emit per-source status as each fetch settles (parallel execution)
     const fetchErrors = [];
-    if (jsearchJobs.status === 'rejected') fetchErrors.push(enrichFetchError('JSearch', jsearchJobs.reason));
-    if (adzunaJobs.status === 'rejected') fetchErrors.push(enrichFetchError('Adzuna', adzunaJobs.reason));
-    if (remoteOKJobs.status === 'rejected') fetchErrors.push(enrichFetchError('RemoteOK', remoteOKJobs.reason));
-    if (remotiveJobs.status === 'rejected') fetchErrors.push(enrichFetchError('Remotive', remotiveJobs.reason));
-    boardResults.forEach(r => {
-      if (r.status === 'rejected') fetchErrors.push(enrichFetchError(r.reason?.source || 'Board', r.reason));
-    });
+    const allCollected = [];
 
-    const boardJobs = boardResults
-      .filter(r => r.status === 'fulfilled')
-      .flatMap(r => r.value.jobs || []);
+    function tracked(label, promise) {
+      send('source_status', { source: label, status: 'fetching' });
+      return promise
+        .then(jobs => {
+          const arr = Array.isArray(jobs) ? jobs : (jobs?.jobs || []);
+          send('source_status', { source: label, status: 'done', count: arr.length });
+          return arr;
+        })
+        .catch(err => {
+          send('source_status', { source: label, status: 'error', message: err.message });
+          fetchErrors.push(enrichFetchError(label, err));
+          return [];
+        });
+    }
 
-    let allJobs = [
-      ...(jsearchJobs.status === 'fulfilled' ? jsearchJobs.value : []),
-      ...(adzunaJobs.status === 'fulfilled' ? adzunaJobs.value : []),
-      ...(remoteOKJobs.status === 'fulfilled' ? remoteOKJobs.value : []),
-      ...(remotiveJobs.status === 'fulfilled' ? remotiveJobs.value : []),
-      ...boardJobs,
+    const fetches = [
+      tracked('JSearch',  fetchJSearch(query, profile.location, profile.remote_preference, profile.jsearch_api_key)),
+      tracked('Adzuna',   fetchAdzuna(query, profile.location, profile.adzuna_app_id, profile.adzuna_api_key)),
+      tracked('RemoteOK', fetchRemoteOK(query)),
+      tracked('Remotive', fetchRemotive(query)),
+      ...ghSlugs.map(slug => tracked(`Greenhouse / ${slug}`, fetchGreenhouse(slug))),
+      ...lvSlugs.map(slug => tracked(`Lever / ${slug}`,      fetchLever(slug))),
     ];
+
+    const results = await Promise.all(fetches);
+    let allJobs = results.flat();
 
     allJobs = deduplicateBatch(allJobs).filter(j => !isDuplicate(j));
 
@@ -156,18 +178,19 @@ router.get('/search', async (req, res) => {
         }
       }
 
+      const s = sanitizeJob(job);
       db.prepare(`
         INSERT OR REPLACE INTO jobs
           (id, source, url, title, company, location, salary, employment_type, remote_type,
            raw_text, skills_json, keyword_score, llm_score, insights_json, posted_at, fetched_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
       `).run(
-        job.id, job.source, job.url, job.title, job.company, job.location,
-        job.salary, job.employment_type, job.remote_type,
-        job.raw_text, JSON.stringify(skills),
+        s.id, s.source, s.url, s.title, s.company, s.location,
+        s.salary, s.employment_type, s.remote_type,
+        s.raw_text, JSON.stringify(skills),
         keywordScore, llmScore,
         insights ? JSON.stringify(insights) : null,
-        job.posted_at || null
+        s.posted_at
       );
 
       scored++;
@@ -176,10 +199,6 @@ router.get('/search', async (req, res) => {
 
     log('job_search_complete', {
       added: allJobs.length,
-      jsearch_ok: jsearchJobs.status === 'fulfilled',
-      adzuna_ok: adzunaJobs.status === 'fulfilled',
-      remoteok_ok: remoteOKJobs.status === 'fulfilled',
-      remotive_ok: remotiveJobs.status === 'fulfilled',
       greenhouse_slugs: ghSlugs,
       lever_slugs: lvSlugs,
       fetch_errors: fetchErrors.map(e => `${e.source}: ${e.message}`),

@@ -155,9 +155,12 @@ export default function Jobs() {
     posting_date: 'all',
   });
   const [sortBy, setSortBy] = useState('date');
+  const [sourceStatuses, setSourceStatuses] = useState({}); // { label: { status, count, message } }
+  const [showSourceBar, setShowSourceBar] = useState(false);
   const [processingIds, setProcessingIds] = useState(new Set());
   const [aiDone, setAiDone] = useState(false);
   const [jdJob, setJdJob] = useState(null);
+  const sourceBarTimerRef = useRef(null);
   const eventSourceRef = useRef(null);
   const searchOptsPanelRef = useRef(null);
   const searchOptsButtonRef = useRef(null);
@@ -236,11 +239,18 @@ export default function Jobs() {
     setSelected(new Set());
     setAiDone(false);
     setShowSearchOptions(false);
+    setSourceStatuses({});
+    setShowSourceBar(true);
+    if (sourceBarTimerRef.current) clearTimeout(sourceBarTimerRef.current);
     saveSearchOptions(searchOptions);
 
     const es = new EventSource(`${BASE}/api/jobs/search`);
     eventSourceRef.current = es;
 
+    es.addEventListener('source_status', e => {
+      const { source, status, count, message } = JSON.parse(e.data);
+      setSourceStatuses(prev => ({ ...prev, [source]: { status, count, message } }));
+    });
     es.addEventListener('status', e => setStatusMsg(JSON.parse(e.data).message));
     es.addEventListener('progress', e => {
       const { scored, total } = JSON.parse(e.data);
@@ -256,11 +266,15 @@ export default function Jobs() {
       setLastSearchInfo({ added, fetchErrors: fetchErrors || [] });
       setStep(2);
       loadJobs();
+      // Collapse source bar after a delay unless there were errors
+      sourceBarTimerRef.current = setTimeout(() => setShowSourceBar(false), 5000);
     });
     es.addEventListener('error', e => {
       if (!e.data) return;
       completed = true;
-      setSearchError(JSON.parse(e.data).message);
+      const msg = JSON.parse(e.data).message;
+      setSearchError(msg);
+      setSourceStatuses(prev => ({ ...prev, '⚠ Fatal error': { status: 'error', message: msg } }));
       setStatusMsg('');
       es.close();
       setSearching(false);
@@ -268,7 +282,9 @@ export default function Jobs() {
     es.onerror = () => {
       if (completed || es.readyState === EventSource.CLOSED) return;
       completed = true;
-      setSearchError('Search could not connect to the backend.');
+      const msg = 'Search could not connect to the backend.';
+      setSearchError(msg);
+      setSourceStatuses(prev => ({ ...prev, '⚠ Connection': { status: 'error', message: msg } }));
       setStatusMsg('');
       es.close();
       setSearching(false);
@@ -369,6 +385,27 @@ export default function Jobs() {
               ? <><span className="spinner" style={{ width: 12, height: 12 }} />Processing…</>
               : 'Process Matches'}
           </button>
+        </div>
+      </div>
+
+      {/* Source status bar */}
+      <div className={`source-status-bar${showSourceBar ? ' open' : ''}`}>
+        <div className="source-status-inner">
+          {Object.entries(sourceStatuses).map(([source, { status, count, message }]) => (
+            <div key={source} className={`source-status-row source-status-${status}`}>
+              <span className="source-status-icon">
+                {status === 'fetching' ? <span className="spinner" style={{ width: 11, height: 11 }} /> : status === 'done' ? '✓' : '✕'}
+              </span>
+              <span className="source-status-label">{source}</span>
+              {status === 'done' && <span className="source-status-count">{count} found</span>}
+              {status === 'error' && <span className="source-status-msg">{message}</span>}
+            </div>
+          ))}
+          {Object.keys(sourceStatuses).length === 0 && searching && (
+            <div className="source-status-row" style={{ color: 'var(--text-dim)', fontSize: 12 }}>
+              <span className="spinner" style={{ width: 11, height: 11 }} /> Connecting…
+            </div>
+          )}
         </div>
       </div>
 

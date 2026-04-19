@@ -860,6 +860,56 @@ input, select, textarea { font-family: inherit; }
   align-self: center;
 }
 
+/* Source status bar */
+.source-status-bar {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.35s ease, opacity 0.25s ease, margin-bottom 0.35s ease;
+  margin-bottom: 0;
+}
+.source-status-bar.open {
+  max-height: 400px;
+  opacity: 1;
+  margin-bottom: 8px;
+}
+.source-status-inner {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.source-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.source-status-icon {
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.source-status-label {
+  font-weight: 500;
+  color: var(--text-muted);
+  min-width: 120px;
+}
+.source-status-count {
+  color: var(--text-dim);
+}
+.source-status-done .source-status-icon { color: var(--green); }
+.source-status-done .source-status-label { color: var(--text); }
+.source-status-error .source-status-icon { color: var(--red); }
+.source-status-error .source-status-label { color: var(--red); }
+.source-status-msg {
+  color: var(--red);
+  font-size: 12px;
+}
+
 /* Filters row */
 .filters-row {
   display: flex;

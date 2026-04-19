@@ -126,7 +126,8 @@ export default function Profile() {
           <div style={{ fontWeight: 500, marginBottom: 4 }}>Company Job Boards</div>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 16 }}>
             Pull directly from specific companies' career pages. Enter slugs as comma-separated values.{' '}
-            Find a company's slug in their Greenhouse/Lever URL (e.g. <code>boards.greenhouse.io/stripe</code> → slug is <code>stripe</code>).
+            Find a company's slug in their Greenhouse/Lever URL (e.g. <code>boards.greenhouse.io/stripe</code> → slug is <code>stripe</code>).{' '}
+            You can also use Claude to suggest slugs.
           </div>
           <div className="profile-grid">
             <div className="form-group">
