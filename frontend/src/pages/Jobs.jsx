@@ -24,15 +24,6 @@ const SALARY_OPTIONS = [
   }),
 ];
 
-const MIN_EXP_OPTIONS = [
-  { value: 0,  label: 'Any' },
-  { value: 1,  label: '1+ years' },
-  { value: 2,  label: '2+ years' },
-  { value: 3,  label: '3+ years' },
-  { value: 5,  label: '5+ years' },
-  { value: 7,  label: '7+ years' },
-  { value: 10, label: '10+ years' },
-];
 
 function parseSalaryMin(salaryStr) {
   if (!salaryStr) return null;
@@ -154,7 +145,6 @@ export default function Jobs() {
     remote_preference: [],   // array of 'remote'|'hybrid'|'on-site'; empty = any
     salary_min: '',
     include_no_salary: true,
-    min_experience: 0,
     posting_date: 'all',
   });
   const [sortBy, setSortBy] = useState('date');
@@ -184,7 +174,6 @@ export default function Jobs() {
         remote_preference: remoteArr,
         salary_min: p.salary_min ? String(p.salary_min) : '',
         include_no_salary: p.include_no_salary !== 0,
-        min_experience: p.min_experience || 0,
         posting_date: 'all',
       });
     });
@@ -229,7 +218,6 @@ export default function Jobs() {
         remote_preference: remoteStr,
         salary_min: opts.salary_min,
         include_no_salary: opts.include_no_salary,
-        min_experience: opts.min_experience,
       }),
     });
   }
@@ -506,12 +494,6 @@ export default function Jobs() {
                 />
                 Include postings without salary
               </label>
-            </div>
-            <div className="form-group">
-              <label className="label">Min experience</label>
-              <select className="select" value={searchOptions.min_experience} onChange={e => setOpt('min_experience', Number(e.target.value))}>
-                {MIN_EXP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
             </div>
           </div>
           <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
