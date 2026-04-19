@@ -470,13 +470,6 @@ export default function Jobs() {
         </div>
       </div>
 
-      {/* Process Matches error */}
-      {processError && (
-        <div className="fetch-error-item" style={{ marginTop: 8 }}>
-          <span className="fetch-error-msg">{processError}</span>
-        </div>
-      )}
-
       {/* Source status bar */}
       <div className={`source-status-bar${showSourceBar ? ' open' : ''}`}>
         <div className="source-status-inner">
@@ -600,16 +593,22 @@ export default function Jobs() {
         </div>
       )}
 
-      {/* Fetch errors */}
-      {lastSearchInfo?.fetchErrors?.length > 0 && (
+      {/* Errors: import source failures + Process Matches failures */}
+      {(lastSearchInfo?.fetchErrors?.length > 0 || processError) && (
         <div className="fetch-errors">
-          {lastSearchInfo.fetchErrors.map((e, i) => (
+          {lastSearchInfo?.fetchErrors?.map((e, i) => (
             <div key={i} className="fetch-error-item">
               <span className="fetch-error-source">{e.source}</span>
               <span className="fetch-error-msg">{e.message}</span>
               {e.hint && <span className="fetch-error-hint">{e.hint}</span>}
             </div>
           ))}
+          {processError && (
+            <div className="fetch-error-item">
+              <span className="fetch-error-source">Process Matches</span>
+              <span className="fetch-error-msg">{processError}</span>
+            </div>
+          )}
         </div>
       )}
 
