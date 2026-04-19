@@ -79,7 +79,7 @@ scoring guide:
 Keep arrays concise (max 5 items each). Be specific and actionable.`;
 
   try {
-    const result = spawnSync('claude', ['-p', prompt, '--output-format', 'text'], {
+    const result = spawnSync(CLAUDE_BIN, ['-p', prompt, '--output-format', 'text'], {
       encoding: 'utf-8',
       timeout: 60000,
       maxBuffer: 1024 * 1024,
