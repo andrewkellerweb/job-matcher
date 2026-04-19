@@ -198,6 +198,7 @@ export default function Jobs() {
   const [sourceStatuses, setSourceStatuses] = useState({}); // { label: { status, count, message } }
   const [showSourceBar, setShowSourceBar] = useState(false);
   const [processingIds, setProcessingIds] = useState(new Set());
+  const [processError, setProcessError] = useState('');
   const [aiDone, setAiDone] = useState(false);
   const [jdJob, setJdJob] = useState(null);
   const sourceBarTimerRef = useRef(null);
@@ -342,21 +343,52 @@ export default function Jobs() {
   }, []);
 
   async function processMatches() {
+    setProcessError('');
+
+    // Pre-flight: verify Claude is connected and resume is imported
+    try {
+      const [claudeStatus, resumeStatus] = await Promise.all([
+        fetch(`${BASE}/api/claude/status`).then(r => r.json()),
+        fetch(`${BASE}/api/resume`).then(r => r.json()),
+      ]);
+      if (!claudeStatus.available) {
+        setProcessError('Claude is not connected. Go to Setup → Claude to connect it.');
+        return;
+      }
+      if (!resumeStatus?.structured_json) {
+        setProcessError('No resume imported. Go to the Resume page and import your resume first.');
+        return;
+      }
+    } catch {
+      setProcessError('Could not reach the backend. Make sure the server is running.');
+      return;
+    }
+
     const ids = [...selected];
     setProcessingIds(new Set(ids));
+    let failCount = 0;
+
     for (const id of ids) {
       try {
-        const insights = await fetch(`${BASE}/api/jobs/${encodeURIComponent(id)}/analyze`, {
-          method: 'POST',
-        }).then(r => r.json());
+        const res = await fetch(`${BASE}/api/jobs/${encodeURIComponent(id)}/analyze`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         setJobs(prev => prev.map(j =>
-          j.id === id ? { ...j, insights_json: insights, llm_score: insights.score } : j
+          j.id === id ? { ...j, insights_json: data, llm_score: data.score } : j
         ));
-      } catch {}
+      } catch (err) {
+        failCount++;
+        // Surface the first fatal error (e.g. Claude disconnected mid-run)
+        if (failCount === 1) setProcessError(`Analysis failed: ${err.message}`);
+      }
       setProcessingIds(p => { const next = new Set(p); next.delete(id); return next; });
     }
-    setAiDone(true);
-    setTab('ai');
+
+    if (failCount === 0) {
+      setProcessError('');
+      setAiDone(true);
+      setTab('ai');
+    }
   }
 
   const baseJobs = tab === 'ai' ? jobs.filter(j => j.insights_json != null) : jobs;
@@ -437,6 +469,13 @@ export default function Jobs() {
           </button>
         </div>
       </div>
+
+      {/* Process Matches error */}
+      {processError && (
+        <div className="fetch-error-item" style={{ marginTop: 8 }}>
+          <span className="fetch-error-msg">{processError}</span>
+        </div>
+      )}
 
       {/* Source status bar */}
       <div className={`source-status-bar${showSourceBar ? ' open' : ''}`}>
